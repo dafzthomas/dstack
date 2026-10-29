@@ -68,3 +68,7 @@ These pattern checks supplement a dedicated secret scan and manual review.
 5. Run `./scripts/validate.sh`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the repository contract.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
