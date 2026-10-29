@@ -6,8 +6,8 @@ Reusable Codex skills for pull request review and delivery.
 
 | Skill | Purpose |
 | --- | --- |
-| `review-pr` | Review a GitHub PR for genuine bugs and architectural problems, then post a summary and inline comments, or approve it when clean. |
-| `review-pr-watch` | Continuously watch a review of any PR, whoever authored it, until settled: verify pushed fixes and replies, manage its threads, and review new commits. |
+| `review-pr` | Review a GitHub PR for genuine bugs and architectural problems, then post a `COMMENT` review with a summary and inline comments. It never approves. |
+| `review-pr-watch` | Continuously watch a review of any PR, whoever authored it, until it merges or closes: verify pushed fixes and replies, manage its threads, approve once settled, and review new commits. |
 | `finish-delivery` | Carry an implementation through appropriate verification and PR handoff, preserving existing explicit merge authorization. |
 | `what-in-the-pr` | Audit open PRs with subagents, refresh them against current main, and recommend next steps. |
 | `babysit-pr` | Watch your own PR to merge: fix comments and checks, reply to every comment addressed, and ask in the thread when a comment needs your decision. |
@@ -52,7 +52,7 @@ python3 scripts/check-public.py
 ```
 
 The validator checks package structure, frontmatter names, unwanted local
-artifacts, shell syntax, and JavaScript syntax. The Python privacy check flags
+artifacts, shell syntax, JavaScript syntax, and Python syntax. The Python privacy check flags
 common email, machine-path, credential, and private-network patterns in tracked
 files. Run `python3 scripts/check-public.py --history` to include all reachable
 Git history and commit metadata. Use `--denylist /private/path/to/terms.txt` for

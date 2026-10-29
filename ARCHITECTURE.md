@@ -52,5 +52,6 @@ by Codex.
 - required package files and matching frontmatter names;
 - absence of known local artifacts;
 - Bash syntax for shell helpers;
-- JavaScript syntax for `.js`, `.mjs`, and `.cjs` helpers.
+- JavaScript syntax for `.js`, `.mjs`, and `.cjs` helpers;
+- Python syntax for `.py` helpers.
 
