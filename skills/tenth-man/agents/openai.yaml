@@ -1,0 +1,6 @@
+interface:
+  display_name: "Tenth Man"
+  short_description: "Argue against a team's consensus, then concede or hold"
+  default_prompt: "Use $tenth-man to make the strongest case against our decision. When we push back, decide whether our reply answered your argument and whether what's left matters at these stakes, then concede or hold."
+policy:
+  allow_implicit_invocation: true

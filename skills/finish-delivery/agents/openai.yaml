@@ -1,0 +1,6 @@
+interface:
+  display_name: "Finish Delivery"
+  short_description: "Verify and deliver a change through PR handoff"
+  default_prompt: "Use $finish-delivery to complete the current implementation through appropriate verification and pull-request handoff. Merge only if I have explicitly authorized it."
+policy:
+  allow_implicit_invocation: false

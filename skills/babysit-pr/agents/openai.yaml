@@ -1,0 +1,6 @@
+interface:
+  display_name: "Babysit PR"
+  short_description: "Watch your PR to merge, replying to every comment addressed"
+  default_prompt: "Use $babysit-pr to monitor my pull request until it merges. Address new comments and failing checks, push the fixes, reply to every comment you address explaining what was fixed or why not, and ask me in this thread when a comment needs my decision. Do not merge unless I say so."
+policy:
+  allow_implicit_invocation: true

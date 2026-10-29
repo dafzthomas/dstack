@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.*
+*.log
+*.sqlite
+*.sqlite-*
+
+*.pem
+*.key
+*.p12
+*.pfx
+.netrc
+.npmrc
+__pycache__/

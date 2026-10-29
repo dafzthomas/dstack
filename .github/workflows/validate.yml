@@ -1,0 +1,22 @@
+name: Validate skills
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Validate skill packages
+        run: ./scripts/validate.sh
+      - name: Check tracked files for public disclosure
+        run: python3 scripts/check-public.py

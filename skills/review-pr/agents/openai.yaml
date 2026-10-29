@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review PR"
+  short_description: "Review a PR for bugs and architecture, then comment"
+  default_prompt: "Use $review-pr to review this pull request for genuine bugs and architectural problems. Post a COMMENT review that states the head SHA and backs each claim with the commands and outputs. Do not approve, merge, push, edit, or rebase. A clean verdict is not merge authorization."
+policy:
+  allow_implicit_invocation: false

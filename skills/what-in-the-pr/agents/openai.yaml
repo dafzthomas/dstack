@@ -1,0 +1,4 @@
+interface:
+  display_name: "What in the PR"
+  short_description: "Audit and refresh open PRs against current main"
+  default_prompt: "Use $what-in-the-pr to audit my open pull requests with subagents, update the ones that still need to exist, and recommend next steps."
