@@ -1,6 +1,6 @@
 interface:
   display_name: "Review PR Watch"
-  short_description: "Review a PR and keep watching until findings are settled"
+  short_description: "Review a PR and keep watching until it merges or closes"
   default_prompt: "Use $review-pr-watch to review this pull request, whoever authored it, and keep monitoring it until it merges or closes, or a real blocker needs me. Use a PR watch tool such as T3 Code's watch_pull_request when available. Verify pushed fixes and replies, resolve your fixed findings, reopen regressions, and review new commits. Keep waiting and polling after the first review and unchanged polls. Do not change the code yourself."
 policy:
   allow_implicit_invocation: false

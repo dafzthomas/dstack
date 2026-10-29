@@ -50,7 +50,7 @@ after publishing it.
 Read PR state, head and base branch on every poll, even when the last poll found no changes:
 
 ```bash
-gh pr view "$pr" --repo "$repo" --json state,headRefOid,baseRefName,autoMergeRequest,url
+gh pr view "$pr" --repo "$repo" --json state,headRefOid,baseRefName,url
 ```
 
 Also refresh reviews, the complete thread query below and issue discussion. A reply,
@@ -159,8 +159,8 @@ repository in the state directory:
 base_ref=$(gh pr view "$pr" --repo "$repo" --json baseRefName -q .baseRefName)
 export GIT_DIR="$state_dir/$owner-$name.git"
 [ -d "$GIT_DIR" ] || gh repo clone "$repo" "$GIT_DIR" -- --bare --filter=blob:none
-git fetch -q origin "+refs/heads/$base_ref:refs/remotes/origin/$base_ref" \
-  "+refs/pull/$pr/head:refs/remotes/origin/pr/$pr"
+git fetch -q origin "+refs/heads/${base_ref}:refs/remotes/origin/${base_ref}" \
+  "+refs/pull/${pr}/head:refs/remotes/origin/pr/${pr}"
 git cat-file -e "$reviewed^{commit}" 2>/dev/null || git fetch -q origin "$reviewed"
 old_base=$(git merge-base "origin/$base_ref" "$reviewed")
 new_base=$(git merge-base "origin/$base_ref" "$sha")
@@ -175,12 +175,17 @@ conflict resolutions.
 When `$reviewed` cannot be fetched after a force push, or `range-diff` rejects an empty
 range, review the full PR diff for that pass and treat every thread anchor as outdated.
 
+Brace a variable that a `:` follows, as above. zsh reads `$base_ref:r` and `$sha:s` as
+modifiers.
+
 Prefer whole files over hunks — most defects live in the interaction between the new code
 and the code around it. Confirm any line number you are about to post by numbering from the
-file's own input lines; `cat -n` restarts at 1 and hands you an offset instead:
+file's own input lines; `cat -n` restarts at 1 and hands you an offset instead. A `RIGHT`
+line is numbered at `$sha`, a `LEFT` line at `$new_base`:
 
 ```bash
-git show "$sha:<path>" | awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'
+git show "${sha}:<path>" | awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'
+git show "${new_base}:<path>" | awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'
 ```
 
 Sources: [git range-diff](https://git-scm.com/docs/git-range-diff).
@@ -207,18 +212,15 @@ polling progress to the user as non-final messages.
 ## Approve a settled PR
 
 ```bash
-gh pr view "$pr" --repo "$repo" --json headRefOid,autoMergeRequest \
-  -q '{head: .headRefOid, auto_merge: (.autoMergeRequest != null)}'
 printf '%s' '{"body": "Re-verified every finding at <sha> and reviewed the changes since <reviewed>. Nothing outstanding.", "comments": []}' \
   | "$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" --event APPROVE -
 ```
 
-Only with every ledger finding `fixed` or `withdrawn`, the review complete through the
-current head, and `auto_merge` false. With auto-merge armed, pause for the user instead.
-The script posts nothing when your approval already stands at `$sha`, so a retry after an
-interrupted response cannot create a duplicate. GitHub refuses to let you approve your own
-PR; if the call fails for that reason, leave the PR unapproved and tell the user it is
-settled.
+Only with every ledger finding `fixed` or `withdrawn` and the review complete through the
+current head. The script exits 4 when auto-merge is armed; pause for the user. It posts
+nothing when your approval already stands at `$sha`, so a retry after an interrupted
+response cannot create a duplicate. GitHub refuses to let you approve your own PR; if the
+call fails for that reason, leave the PR unapproved and tell the user it is settled.
 
 ## Dismiss your approval
 

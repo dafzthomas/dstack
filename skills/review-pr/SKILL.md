@@ -266,13 +266,17 @@ Each finding goes to one of two places, decided by whether its line sits inside 
 - **Anything else** — the caller three files away, an unchanged invariant outside every
   hunk → a bullet in the summary body citing `path:line`.
 
-Confirm every surviving line number at `$sha`. `cat -n` renumbers from 1 and will hand you
-offsets instead of file lines, so number by input line:
+Confirm every surviving line number. A `RIGHT` line is numbered at `$sha`, a `LEFT` line
+at the merge base. `cat -n` renumbers from 1 and will hand you offsets instead of file
+lines, so number by input line:
 
 ```bash
+merge_base=$(gh api "repos/<o>/<r>/compare/<baseRefOid>...$sha" -q .merge_base_commit.sha)
 gh api "repos/<o>/<r>/contents/<url-encoded-path>?ref=$sha" -q .content \
   | base64 -d | awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'
 ```
+
+Use `?ref=$merge_base` for a `LEFT` line.
 
 Post the summary and all comments as one review through `scripts/post-review.py`. It
 exits 3 when the head has moved from `$sha` (restart from step 1), exits 2 naming any

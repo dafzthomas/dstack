@@ -269,14 +269,14 @@ block merging depends on the repository's rules.
 ### 6. Approve, or name what is outstanding
 
 Every finding `fixed` or `withdrawn`, and the full review through the current head
-complete with no evidence gaps, means the review is settled. Re-read the head, discussion
-and auto-merge state before approval; restart if the head or discussion changed.
+complete with no evidence gaps, means the review is settled. Re-read the head and
+discussion before approval; restart if they changed.
 
-When auto-merge is armed, do not approve. Your approval can merge the PR, and merges need
-the operator. Pause, and tell the user the review is settled and waiting on their call.
-Otherwise post `APPROVE` at the confirmed SHA through `post-review.py --event APPROVE`
-with no comments. It posts nothing when your approval already stands at that SHA. Record
-`approved_at`.
+Post `APPROVE` at the confirmed SHA through `post-review.py --event APPROVE` with no
+comments. It posts nothing when your approval already stands at that SHA. It exits 4 when
+auto-merge is armed, because the approval could merge the PR and merges need the operator.
+Then pause, and tell the user the review is settled and waiting on their call. Record
+`approved_at` after a successful approval.
 
 Settlement here covers this review. Report known CI or merge blockers separately; this
 skill does not fix code or promise merge readiness. If GitHub refuses self-approval,
@@ -323,7 +323,7 @@ On finishing, unwatch the PR if a watch tool is in use, and settle the thread if
 | Incremental change | `git range-diff --diff-merges=remerge "$old_base..$reviewed" "$new_base..$sha"` |
 | Reply | `gh api repos/<o>/<r>/pulls/<n>/comments/<databaseId>/replies -f body=...` |
 | Post findings | `"$post_review" --repo <o>/<r> --pr <n> --sha "$sha" --model "<model name>" "$run_dir/review.json"` |
-| Approve | Same script with `--event APPROVE` and `"comments": []`, after checking auto-merge |
+| Approve | Same script with `--event APPROVE` and `"comments": []`; exit 4 means auto-merge is armed |
 | Dismiss approval | `gh api --method PUT repos/<o>/<r>/pulls/<n>/reviews/<id>/dismissals -f event=DISMISS -f message=...` |
 
 ## Rationalizations
@@ -351,7 +351,6 @@ On finishing, unwatch the PR if a watch tool is in use, and settle the thread if
 - **Diffing `$reviewed..$sha`.** After the author merges the base branch in, that range holds every base commit. After a force push it is fiction. Use `git range-diff`.
 - **Advancing `reviewed_sha` after a partial hunt.** Those commits are now invisible to every future pass.
 - **Approving with a `contested` finding open.** Undecided is not settled.
-- **Approving while auto-merge is armed.** The approval can be the merge. Pause for the user.
 - **Owning a thread by login alone.** The operator posts under the same account. Yours open with the attribution note.
 - **Replying before unresolving.** The reply lands in a closed thread and the unresolved count lies until the next pass.
 - **Posting a per-pass status comment.** Every subscriber gets the email. Verdicts go on threads and in the review body.

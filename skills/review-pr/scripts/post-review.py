@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Post one pull request review after checking it against the live PR.
 
-Refuses to post when the head has moved from --sha or when an inline comment sits
-outside the PR's diff hunks. Adds the attribution note to the body and every inline
-comment. Does nothing when the same review is already posted. Prints the review id.
+Exits 3 when the head has moved from --sha, 2 when an inline comment sits outside the
+PR's diff hunks, and 4 when an APPROVE meets armed auto-merge. Adds the attribution note
+to the body and every inline comment. Does nothing when the same review is already
+posted. Prints the review id.
 
 Payload (a file path, or - for stdin):
   {"body": "...", "comments": [{"path": "...", "line": 12, "side": "RIGHT",
@@ -17,6 +18,7 @@ import subprocess
 import sys
 
 HUNK = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@')
+NOTE_START = '> [!NOTE]\n> 🤖'
 
 
 def gh(*args, stdin=None):
@@ -70,7 +72,7 @@ def misplaced(comment, index):
 
 
 def attributed(text, note):
-    return text if text.startswith('> [!NOTE]') else note + text
+    return text if text.startswith(NOTE_START) else note + text
 
 
 def main():
@@ -91,10 +93,14 @@ def main():
         sys.exit('An APPROVE review carries no inline comments; post findings as COMMENT.')
 
     pull = f'repos/{args.repo}/pulls/{args.pr}'
-    head = json.loads(gh('api', pull))['head']['sha']
+    pull_request = json.loads(gh('api', pull))
+    head = pull_request['head']['sha']
     if head != args.sha:
         print(f'Head moved from {args.sha} to {head}. Restart the review at the new head.', file=sys.stderr)
         sys.exit(3)
+    if args.event == 'APPROVE' and pull_request.get('auto_merge'):
+        print('Auto-merge is armed, so this approval could merge the PR. Pause for the operator.', file=sys.stderr)
+        sys.exit(4)
 
     index = commentable_lines(gh_pages(f'{pull}/files'))
     problems = [problem for problem in (misplaced(c, index) for c in comments) if problem]
@@ -102,7 +108,7 @@ def main():
         print('\n'.join(problems + ['Move these findings into the review body, citing path:line.']), file=sys.stderr)
         sys.exit(2)
 
-    note = f'> [!NOTE]\n> 🤖 **{args.model} responding on behalf of the repository operator**\n\n'
+    note = f'{NOTE_START} **{args.model} responding on behalf of the repository operator**\n\n'
     review = {
         'commit_id': args.sha,
         'event': args.event,
