@@ -1,6 +1,6 @@
 ---
 name: review-pr-watch
-description: Review a PR and continuously monitor pushed fixes and replies until the review is settled. Verify findings, manage your own threads, and review new commits without editing code.
+description: Review a PR and continuously monitor pushed fixes and replies until it merges or closes. Verify findings, manage your own threads, approve once settled, and review new commits without editing code.
 disable-model-invocation: true
 ---
 
@@ -27,9 +27,10 @@ You are the reviewer here and never the author. This skill reads, judges, and an
 It never writes code.
 
 Invoking this skill authorizes, on this PR: posting `COMMENT` and `APPROVE` reviews,
-replying to threads recorded in its ledger, and resolving or unresolving **those threads
-only**. It does not authorize `REQUEST_CHANGES`, committing, pushing, merging, editing the
-PR, contacting the author anywhere but the PR, or touching a thread you did not post.
+dismissing its own approval, replying to threads recorded in its ledger, and resolving
+or unresolving **those threads only**. It does not authorize `REQUEST_CHANGES`, committing,
+pushing, merging, editing the PR, contacting the author anywhere but the PR, or touching a
+thread you did not post.
 
 ## Attribution
 
@@ -42,7 +43,8 @@ Every comment, reply and review body this skill posts goes out under the authent
 <comment>
 ```
 
-The body examples below omit the note for brevity; add it to every one you post.
+The sibling `review-pr/scripts/post-review.py` adds it to reviews and their inline
+comments. Add it yourself to every reply and dismissal message. The examples below omit it.
 
 An invocation starts a **continuous watch**. Run the first pass, then wait and run further
 passes until a stopping condition below applies. Use one-pass mode only when the user
@@ -62,7 +64,7 @@ When the session exposes a tool that wakes this thread on PR activity, such as T
 - **Run one pass per wake.** Start at step 1. Do not call the watch tool again on a wake; it stays on.
 - **Re-read everything, whatever woke you.** It wakes on new comments, reviews, check results and conflicts. A push usually arrives through its checks or the author's reply. Each pass re-reads head, base, reviews, threads and discussion, so a push gets reviewed at the next wake even when the wake was about something else.
 - **Unwatch on finish.** When a finishing condition in [When to stop](#when-to-stop) applies, call `unwatch_pull_request` before the final response. A pause for the user keeps the watch on.
-- **Settle the thread on approval.** After step 6 posts `APPROVE`, or confirms your approval already stands at the current head, unwatch and then settle this thread with `t3_thread_organize` (`action: "settle"`, no `threadId`). It applies when the turn ends. Leave the thread active for any other finish, so a cancelled, closed or unapproved watch stays visible.
+- **Settle the thread on a merge you approved.** When the PR merges with your approval standing at its final head, unwatch and then settle this thread with `t3_thread_organize` (`action: "settle"`, no `threadId`). It applies when the turn ends. Leave the thread active for any other finish, so a cancelled, closed or unapproved watch stays visible.
 
 ### Without one
 
@@ -77,7 +79,7 @@ GitHub. A final response ends this watch unless a verified scheduler will resume
   can be handled. Use an available wait tool, or a short shell sleep if needed. Resume
   any yielded command with its returned session handle until it completes. If no resume
   capability exists, use a shorter foreground wait that completes within the tool limit.
-- On each poll, refresh the PR's open/closed state, head and base SHAs, reviews, every
+- On each poll, refresh the PR's open/closed state, head SHA, base branch, reviews, every
   tracked thread and its replies, and issue discussion. A reply or resolution can change
   without a new commit. Reuse completed code verification only while its evidence holds.
 - Report state changes and the next poll time in commentary. While idle, give a brief
@@ -110,8 +112,8 @@ This skill owns the three things `review-pr` must not decide while a watch is ru
 
 - **Posting.** Run `review-pr` in report-only mode over its steps 2–4 and bring the
   surviving findings back here. One review per pass, posted by this skill.
-- **Approval.** In an approving mode `review-pr` approves a diff it finds clean. A clean
-  incremental diff is not a clean PR while an earlier finding is still open.
+- **Approval.** `review-pr` never approves. A clean incremental diff is not a clean PR
+  while an earlier finding is still open, so step 6 decides approval here.
 - **Thread state.** Resolving and unresolving is this skill's job, and only for its own
   threads.
 
@@ -123,17 +125,17 @@ Read these facts from GitHub every pass:
   baseline when no valid ledger exists.
 - **Which threads exist and who resolved them** — from `reviewThreads`.
 
-`<private-run-dir>/review-watch-<owner>-<repo>-<n>.json` holds what GitHub cannot: the claim each
-finding made and the verdict you reached.
+The ledger in the [state directory](references/thread-operations.md) holds what GitHub
+cannot: the claim each finding made, its severity, and the verdict you reached.
 
 ```json
 {
   "pr": "https://github.com/<o>/<r>/pull/<n>", "pass": 3,
-  "reviewed_sha": "<sha>", "reviewed_base_sha": "<base-sha>", "approved_at": null,
+  "reviewed_sha": "<sha>", "base_ref": "main", "approved_at": null,
   "last_polled_at": "<timestamp>",
   "findings": {
     "PRRT_abc": { "claim": "flushQueue() unawaited; rejections escape as unhandled",
-                  "path": "src/api/client.ts", "line": 88,
+                  "severity": "major", "path": "src/api/client.ts", "line": 88,
                   "state": "fixed", "verified_at": "<sha>", "reason": null,
                   "last_seen_comment_id": 123, "last_action": "resolved at <sha>" }
   }
@@ -169,17 +171,18 @@ me=$(gh api user -q .login)
 Recover the posted-review baseline with the paginated query in
 [thread operations](references/thread-operations.md#recover-the-baseline-from-posted-reviews).
 Use the ledger's completed `reviewed_sha` as `$reviewed` when it belongs to this PR;
-a clean incremental pass may have advanced it without posting a review. Read the current
-base SHA as well. A changed base requires a full PR review before settlement.
+a clean incremental pass may have advanced it without posting a review. Read the base
+branch as well. A PR retargeted to a different base since `$reviewed` needs a full review.
 
 No review of yours and no ledger means this is the first review: delegate it in report-only
 mode, then use steps 5–6 to publish the result and record every finding with its thread id.
-Continue to step 7 and the watch loop when findings remain. There is nothing to verify yet,
-but the first review is not the end of the watch.
+Continue to step 7 and the watch loop. There is nothing to verify yet, but the first
+review is not the end of the watch.
 
-Otherwise confirm `$reviewed` is still an ancestor of `$sha`. After a force push or rebase
-it is not, and `$reviewed..$sha` then describes a diff that never existed — review the whole
-PR diff instead and expect every thread anchor to be outdated.
+Otherwise compare the two versions of the PR with `git range-diff`, as in
+[thread operations](references/thread-operations.md#read-the-incremental-change). It lists
+only the PR's own commits, so merging the base branch in or rebasing onto it adds no base
+commits to the pass. `$reviewed..$sha` would include every one of them.
 
 ### 2. Verify findings and prepare actions
 
@@ -212,14 +215,16 @@ only accept it from code you have read.
 | Checks out at `path:line` | `withdrawn`. Record the reason; queue an acceptance reply and resolution if needed |
 | Is wrong about the code | Stays `open`. Queue a reply naming the `path:line` that disproves it, with reopening first if needed |
 | Turns on product intent no file can settle | `contested`. Complete independent review work, then put the decision to the user |
+| Defers the fix to an issue or PR that exists | Minor or Major: `withdrawn` with reason `deferred to <link>`; queue an acceptance reply and resolution. Blocker: stays `open`; queue a reply that a Blocker is not deferred |
+| Promises a follow-up with no link | Stays `open`. Queue a reply asking for the issue link |
 
 Seniority, a responsive author, a confident tone, and a release later today are not
 evidence about the code. They change how quickly you check; they never replace the check.
 
 ### 4. Review what landed after your last review
 
-Diff `$reviewed..$sha`, subtract the changes you just verified as fixes, and run
-`review-pr`'s hunt over what remains.
+Take the commits `git range-diff` marks new or changed since `$reviewed`, subtract the
+changes you just verified as fixes, and run `review-pr`'s hunt over what remains.
 
 The bar does not drop because the code is new. `review-pr`'s admission test still decides
 what gets posted: every finding completes the Bug or Architecture sentence with concrete
@@ -230,9 +235,9 @@ dismiss control cannot be reached", which completes the sentence.
 A new file arriving inside an unrelated commit is a scope observation, not a finding. Leave
 it out of the review; mention it to the user if it matters.
 
-Advance `reviewed_sha` and `reviewed_base_sha` only when this step actually finished and
-any new findings are safely recorded. Advancing them after a partial hunt silently drops
-those commits from every future pass.
+Advance `reviewed_sha` only when this step actually finished and any new findings are
+safely recorded. Advancing it after a partial hunt silently drops those commits from
+every future pass.
 
 ### 5. Post once, at a SHA you have just re-read
 
@@ -243,15 +248,19 @@ comments at the wrong lines.
 current_sha=$(gh pr view <n> --repo <o>/<r> --json headRefOid -q .headRefOid)
 ```
 
-Compare `$current_sha` to the pinned `$sha` and refresh the base and discussion too.
+Compare `$current_sha` to the pinned `$sha` and refresh the discussion too.
 If the evidence changed, restart the pass. Otherwise, in this order:
 
 1. **Unresolve** each thread that needs reopening, before replying, so the reply lands in
    an open thread and the PR's unresolved count is true immediately.
 2. **Reply** once per thread you acted on — the verdict and its evidence in one sentence.
 3. **Resolve** each thread you verified `fixed` or `withdrawn`.
-4. **Post one `COMMENT` review** carrying any new findings from step 4, with the per-finding
-   verdicts in its body. Skip the review entirely when step 4 found nothing.
+4. **Dismiss your standing approval** when this pass leaves any finding `open` or
+   `regressed`, so the PR does not stay approved over a defect. Pause for the user if the
+   dismissal fails.
+5. **Post one `COMMENT` review** through `post-review.py`, carrying any new findings from
+   step 4, with the per-finding verdicts in its body. Skip the review entirely when step 4
+   found nothing.
 
 A review carrying findings is always `event: "COMMENT"`. `REQUEST_CHANGES` is not
 authorized by this skill. Escalate to the user when necessary. Whether unresolved threads
@@ -259,10 +268,15 @@ block merging depends on the repository's rules.
 
 ### 6. Approve, or name what is outstanding
 
-Every finding `fixed` or `withdrawn`, and the full review through the current head and base
-complete with no evidence gaps, means the review is settled. Re-read the head, base and
-discussion before approval; restart if they changed. Post `APPROVE` at the confirmed SHA
-unless your non-dismissed approval already exists for that SHA, and record `approved_at`.
+Every finding `fixed` or `withdrawn`, and the full review through the current head
+complete with no evidence gaps, means the review is settled. Re-read the head and
+discussion before approval; restart if they changed.
+
+Post `APPROVE` at the confirmed SHA through `post-review.py --event APPROVE` with no
+comments. It posts nothing when your approval already stands at that SHA. It exits 4 when
+auto-merge is armed, because the approval could merge the PR and merges need the operator.
+Then pause, and tell the user the review is settled and waiting on their call. Record
+`approved_at` after a successful approval.
 
 Settlement here covers this review. Report known CI or merge blockers separately; this
 skill does not fix code or promise merge readiness. If GitHub refuses self-approval,
@@ -270,8 +284,10 @@ report the review as settled but unapproved instead of retrying it forever.
 
 Anything else is a report, not an approval. A `contested` finding is not clean. Neither is
 a finding you could not verify, or a step 4 you did not finish — say which, and approve
-nothing. If you approved on an earlier pass and a new commit has since landed, that
-approval may be stale: re-run steps 2–4 on the delta before approving again.
+nothing.
+
+Approval does not end the watch. A commit that lands after it gets the same pass as any
+other, and a finding left `open` or `regressed` dismisses the approval in step 5.
 
 ### 7. Report progress and repeat
 
@@ -287,14 +303,15 @@ Save the ledger. If no stopping condition applies, keep watching. With a PR watc
 
 ## When to stop
 
-Finish when the review is settled at the current head and base, the PR is merged or
-closed, the user cancels, an explicit one-pass request is complete, or a user-set deadline
-expires. Pause for a `contested` finding, unavailable evidence, missing permissions, or
-a session/tool limit that prevents further monitoring. Complete independent review work
-before handing back a blocker. An unchanged poll or an author who has not replied is
-not a blocker or an implicit timeout.
+Finish when the PR is merged or closed, the user cancels, an explicit one-pass request is
+complete, or a user-set deadline expires. A settled, approved review keeps watching for
+new commits. Pause for a `contested` finding, auto-merge armed at settlement, a failed
+dismissal, unavailable evidence, missing permissions, or a session/tool limit that
+prevents further monitoring. Complete independent review work before handing back a
+blocker. An unchanged poll or an author who has not replied is not a blocker or an
+implicit timeout.
 
-On finishing, unwatch the PR if a watch tool is in use, and settle the thread if the finish was an approval. The final response must say why monitoring ended, the last verified SHA, any outstanding findings and their next action, and whether monitoring is stopped or a PR watch or verified scheduler will resume it. Never end with a promise to keep watching without that capability.
+On finishing, unwatch the PR if a watch tool is in use, and settle the thread if the PR merged with your approval standing at its final head. The final response must say why monitoring ended, the last verified SHA, any outstanding findings and their next action, and whether monitoring is stopped or a PR watch or verified scheduler will resume it. Never end with a promise to keep watching without that capability.
 
 ## Quick reference
 
@@ -302,12 +319,12 @@ On finishing, unwatch the PR if a watch tool is in use, and settle the thread if
 |---|---|
 | Head SHA | `gh pr view <n> --repo <o>/<r> --json headRefOid -q .headRefOid` |
 | Baseline SHA | Completed ledger SHA, otherwise the paginated recovery query in [thread operations](references/thread-operations.md#recover-the-baseline-from-posted-reviews) |
-| Ancestry | `git merge-base --is-ancestor $reviewed $sha` |
 | Threads, resolve, unresolve | See [thread operations](references/thread-operations.md) |
-| Incremental diff | `gh api repos/<o>/<r>/compare/$reviewed...$sha -q '.files[].filename'` |
+| Incremental change | `git range-diff --diff-merges=remerge "$old_base..$reviewed" "$new_base..$sha"` |
 | Reply | `gh api repos/<o>/<r>/pulls/<n>/comments/<databaseId>/replies -f body=...` |
-| Post findings | `gh api repos/<o>/<r>/pulls/<n>/reviews --method POST --input /tmp/review.json` |
-| Approve | `gh api repos/<o>/<r>/pulls/<n>/reviews --method POST -f commit_id="$sha" -f event=APPROVE -f body=...` |
+| Post findings | `"$post_review" --repo <o>/<r> --pr <n> --sha "$sha" --model "<model name>" "$run_dir/review.json"` |
+| Approve | Same script with `--event APPROVE` and `"comments": []`; exit 4 means auto-merge is armed |
+| Dismiss approval | `gh api --method PUT repos/<o>/<r>/pulls/<n>/reviews/<id>/dismissals -f event=DISMISS -f message=...` |
 
 ## Rationalizations
 
@@ -323,15 +340,17 @@ On finishing, unwatch the PR if a watch tool is in use, and settle the thread if
 | "Nothing moved, but I should say something" | Report no change. An untouched open finding gets no second comment. |
 | "I read the head SHA at the start of the pass" | Steps 2–4 take minutes. Re-read, or post onto the wrong lines. |
 | "Their explanation sounds reasonable" | Sounding reasonable is not being right. Accept it from `path:line` or not at all. |
+| "They'll fix it in a follow-up" | Accept it only with a link to an issue that exists, and never for a Blocker. |
+| "It's approved, so the watch is done" | Approval is a state. New commits still get a pass, and a new finding dismisses it. |
 
 ## Common mistakes
 
 - **Trusting the fix commit.** The one failure that resolves a live defect and approves it.
 - **Resolving a thread you did not post.** Only ledger threads are yours to close.
 - **Nagging an untouched finding.** They have not got to it. A second comment adds noise, not information.
-- **Diffing against a `reviewed_sha` that is no longer an ancestor.** After a force push that range is fiction. Check ancestry first.
+- **Diffing `$reviewed..$sha`.** After the author merges the base branch in, that range holds every base commit. After a force push it is fiction. Use `git range-diff`.
 - **Advancing `reviewed_sha` after a partial hunt.** Those commits are now invisible to every future pass.
-- **Letting `review-pr` post its own approval mid-watch.** It judges the diff in front of it; it cannot see your open findings.
 - **Approving with a `contested` finding open.** Undecided is not settled.
+- **Owning a thread by login alone.** The operator posts under the same account. Yours open with the attribution note.
 - **Replying before unresolving.** The reply lands in a closed thread and the unresolved count lies until the next pass.
 - **Posting a per-pass status comment.** Every subscriber gets the email. Verdicts go on threads and in the review body.

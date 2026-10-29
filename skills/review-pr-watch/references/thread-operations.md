@@ -6,7 +6,12 @@ output.
 
 ```bash
 repo=<o>/<r>; owner=<o>; name=<r>; pr=<n>
-ledger=/tmp/review-watch-$owner-$name-$pr.json
+umask 077
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/review-pr-watch"
+mkdir -p "$state_dir"
+ledger="$state_dir/$owner-$name-$pr.json"
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/review-watch.XXXXXXXX")
+post_review=<review-pr skill directory>/scripts/post-review.py
 me=$(gh api user -q .login)
 sha=$(gh pr view "$pr" --repo "$repo" --json headRefOid -q .headRefOid)
 ```
@@ -14,14 +19,19 @@ sha=$(gh pr view "$pr" --repo "$repo" --json headRefOid -q .headRefOid)
 Read `$sha` before anything else and treat it as the subject of the whole pass. Every result
 below is evidence about that one commit.
 
+Yours means authored by `$me` and opening with the attribution note. The operator posts
+under the same account, so login alone also matches the threads and reviews they wrote
+by hand.
+
 ## Recover the baseline from posted reviews
 
 ```bash
-gh api --paginate "repos/$repo/pulls/$pr/reviews" \
-  -q "map(select(.user.login==\"$me\")) | .[] | {id, state, commit_id, submitted_at}"
+ME="$me" gh api --paginate "repos/$repo/pulls/$pr/reviews" \
+  -q '.[] | select(.user.login == env.ME and ((.body // "") | test("^> \\[!NOTE\\]\\r?\\n> 🤖"))) | {id, state, commit_id, submitted_at}'
 
-reviewed=$(gh api --paginate --slurp "repos/$repo/pulls/$pr/reviews" \
-  -q "add | map(select(.user.login==\"$me\" and .submitted_at != null)) | sort_by(.submitted_at) | last | .commit_id")
+reviewed=$(ME="$me" gh api --paginate "repos/$repo/pulls/$pr/reviews" \
+  -q '.[] | select(.user.login == env.ME and .submitted_at != null and ((.body // "") | test("^> \\[!NOTE\\]\\r?\\n> 🤖"))) | [.submitted_at, .commit_id] | @tsv' \
+  | sort | tail -n 1 | cut -f2)
 ```
 
 Prefer the matching ledger's completed `reviewed_sha` for an active watch. Clean passes
@@ -33,41 +43,22 @@ inline threads. For a body-only finding, record the review id and claim without 
 a thread id or calling thread mutations.
 
 An empty result with no ledger means the first pass needs a full review. Continue polling
-after publishing it while findings remain.
+after publishing it.
 
 ## Poll for changes
 
-Read PR state and both SHAs on every poll, even when the last poll found no changes:
+Read PR state, head and base branch on every poll, even when the last poll found no changes:
 
 ```bash
-gh pr view "$pr" --repo "$repo" --json state,headRefOid,baseRefOid,url
+gh pr view "$pr" --repo "$repo" --json state,headRefOid,baseRefName,url
 ```
 
 Also refresh reviews, the complete thread query below and issue discussion. A reply,
-resolution or changed rationale requires assessment even at an unchanged head. A base
-change requires a full PR review. Store the observation time and processed comment ids
-in the ledger. Persist each successful mutation before waiting; after an interrupted
-request, read GitHub to determine whether it succeeded before retrying it.
-
-## Confirm the baseline still describes reality
-
-```bash
-git fetch origin "pull/$pr/head"
-git merge-base --is-ancestor "$reviewed" "$sha" && echo "linear" || echo "history rewritten"
-```
-
-Without a checkout, ask GitHub instead — a rewritten history shows up as commits present in
-the compare's `base_commit` that no longer appear in the head:
-
-```bash
-gh api "repos/$repo/compare/$reviewed...$sha" -q '{status: .status, ahead: .ahead_by, behind: .behind_by}'
-```
-
-`status: "diverged"` or a non-zero `behind_by` means the branch was force-pushed or rebased.
-`$reviewed..$sha` is then a diff that never existed: review the full PR diff for that pass and
-treat every thread anchor as outdated.
-
-Sources: [compare commits](https://docs.github.com/en/rest/commits/commits#compare-two-commits).
+resolution or changed rationale requires assessment even at an unchanged head. A changed
+`baseRefName` means the PR was retargeted and needs a full review. Store the observation
+time and processed comment ids in the ledger. Persist each successful mutation before
+waiting; after an interrupted request, read GitHub to determine whether it succeeded
+before retrying it.
 
 ## Read every review thread
 
@@ -116,17 +107,17 @@ Sources: [GraphQL review threads](https://docs.github.com/en/graphql/reference/p
 ## Record which threads are yours
 
 After posting a review, map its comments back to thread ids so the ledger can key on them.
-The review response carries its own id; its comments carry the `databaseId` the thread query
+The script prints the review id; its comments carry the `databaseId` the thread query
 returns:
 
 ```bash
-review_id=$(gh api "repos/$repo/pulls/$pr/reviews" --method POST --input /tmp/review.json -q .id)
+review_id=$("$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" "$run_dir/review.json")
 gh api "repos/$repo/pulls/$pr/reviews/$review_id/comments" -q '.[] | {databaseId: .id, path, line}'
 ```
 
 Re-run the thread query and match each `databaseId` to the thread whose `comments` contain
-it. On ledger recovery, use comments from your previous reviews to rebuild this mapping.
-Only threads whose original finding you posted may be resolved or unresolved later.
+it. On ledger recovery, rebuild this mapping from threads whose first comment is yours.
+Only those threads may be resolved or unresolved later.
 
 ## Reply to a thread
 
@@ -161,46 +152,56 @@ Sources: [resolveReviewThread](https://docs.github.com/en/graphql/reference/muta
 
 ## Read the incremental change
 
-```bash
-gh api "repos/$repo/compare/$reviewed...$sha" -q '.files[] | {filename, status, changes}'
-gh api "repos/$repo/compare/$reviewed...$sha" -q '.commits[] | {sha: .sha, message: .commit.message}'
-```
-
-With a working tree available, prefer whole files over hunks — most defects live in the
-interaction between the new code and the code around it:
+Compare the PR as you reviewed it with the PR as it stands. Keep one bare clone per
+repository in the state directory:
 
 ```bash
-git diff "$reviewed".."$sha"
-git show "$sha:<path>"
+base_ref=$(gh pr view "$pr" --repo "$repo" --json baseRefName -q .baseRefName)
+export GIT_DIR="$state_dir/$owner-$name.git"
+[ -d "$GIT_DIR" ] || gh repo clone "$repo" "$GIT_DIR" -- --bare --filter=blob:none
+git fetch -q origin "+refs/heads/${base_ref}:refs/remotes/origin/${base_ref}" \
+  "+refs/pull/${pr}/head:refs/remotes/origin/pr/${pr}"
+git cat-file -e "$reviewed^{commit}" 2>/dev/null || git fetch -q origin "$reviewed"
+old_base=$(git merge-base "origin/$base_ref" "$reviewed")
+new_base=$(git merge-base "origin/$base_ref" "$sha")
+git range-diff --diff-merges=remerge "$old_base..$reviewed" "$new_base..$sha"
 ```
 
-Without one, read files at the exact SHA through the contents API. Remember to url-encode
-`[param]` style path segments:
+Each line pairs a commit from your last review with one at `$sha`. `>` is new, `!` changed
+and shows how, `=` is unchanged, and `<` was dropped. Review each new commit with
+`git show --remerge-diff <commit>`, which shows a merge of the base branch only through its
+conflict resolutions.
+
+When `$reviewed` cannot be fetched after a force push, or `range-diff` rejects an empty
+range, review the full PR diff for that pass and treat every thread anchor as outdated.
+
+Brace a variable that a `:` follows, as above. zsh reads `$base_ref:r` and `$sha:s` as
+modifiers.
+
+Prefer whole files over hunks — most defects live in the interaction between the new code
+and the code around it. Confirm any line number you are about to post by numbering from the
+file's own input lines; `cat -n` restarts at 1 and hands you an offset instead. A `RIGHT`
+line is numbered at `$sha`, a `LEFT` line at `$new_base`:
 
 ```bash
-gh api "repos/$repo/contents/<url-encoded-path>?ref=$sha" -q .content | base64 -d
+git show "${sha}:<path>" | awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'
+git show "${new_base}:<path>" | awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'
 ```
 
-Confirm any line number you are about to post by numbering from the file's own input lines;
-`cat -n` restarts at 1 and hands you an offset instead:
-
-```bash
-gh api "repos/$repo/contents/<url-encoded-path>?ref=$sha" -q .content \
-  | base64 -d | awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'
-```
+Sources: [git range-diff](https://git-scm.com/docs/git-range-diff).
 
 ## Post the pass review
 
 ```bash
-# /tmp/review.json:
-# {"commit_id": "<sha>", "event": "COMMENT", "body": "<per-finding verdicts + new findings>",
+# "$run_dir/review.json":
+# {"body": "<per-finding verdicts + new findings>",
 #  "comments": [{"path": "<path>", "line": <n>, "side": "RIGHT", "body": "<comment>"}]}
-gh api "repos/$repo/pulls/$pr/reviews" --method POST --input /tmp/review.json
+"$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" "$run_dir/review.json"
 ```
 
-Inline comments are only accepted on lines the compare reports as added or changed. One
-off-diff entry 422s the entire review, so anything anchored elsewhere goes in the body citing
-`path:line`. `event` is `COMMENT` whenever comments are attached; `REQUEST_CHANGES` is not
+The script exits 3 when the head has moved from `$sha`; restart the pass. It exits 2 naming
+each comment outside the PR's diff hunks; move those to the body citing `path:line`. A
+deleted line takes `side: "LEFT"` and its old-file line number. `REQUEST_CHANGES` is not
 available to this skill.
 
 Skip the review entirely when a pass produced no new findings. Save the completed review
@@ -211,16 +212,25 @@ polling progress to the user as non-final messages.
 ## Approve a settled PR
 
 ```bash
-gh api "repos/$repo/pulls/$pr/reviews" --method POST \
-  -f commit_id="$sha" -f event=APPROVE \
-  -f body="Re-verified every finding at $sha and reviewed the changes since <reviewed>. Nothing outstanding."
+printf '%s' '{"body": "Re-verified every finding at <sha> and reviewed the changes since <reviewed>. Nothing outstanding.", "comments": []}' \
+  | "$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" --event APPROVE -
 ```
 
 Only with every ledger finding `fixed` or `withdrawn` and the review complete through the
-current head and base. Refresh head, base and discussion immediately before approval.
-Skip a non-dismissed approval already posted for that SHA. After any approval attempt, read live
-reviews before retrying so an interrupted response cannot create a duplicate.
-GitHub refuses to let you approve your own PR; if the call fails for that reason, leave the
-PR unapproved and tell the user it is settled.
+current head. The script exits 4 when auto-merge is armed; pause for the user. It posts
+nothing when your approval already stands at `$sha`, so a retry after an interrupted
+response cannot create a duplicate. GitHub refuses to let you approve your own PR; if the
+call fails for that reason, leave the PR unapproved and tell the user it is settled.
 
-Sources: [create a review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request).
+## Dismiss your approval
+
+```bash
+gh api --method PUT "repos/$repo/pulls/$pr/reviews/<approval-review-id>/dismissals" \
+  -f event=DISMISS -f message='<attribution note> <finding> at <sha>; approval withdrawn.'
+```
+
+Use the id of your `APPROVED` review from the baseline query. A protected branch can
+restrict who may dismiss reviews; if the call fails, pause for the user.
+
+Sources: [create a review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request),
+[dismiss a review](https://docs.github.com/en/rest/pulls/reviews#dismiss-a-review-for-a-pull-request).

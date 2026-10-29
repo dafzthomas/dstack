@@ -69,6 +69,16 @@ else
   printf 'WARN: node is unavailable; JavaScript syntax checks skipped.\n' >&2
 fi
 
+if command -v python3 >/dev/null 2>&1; then
+  while IFS= read -r python_file; do
+    if ! python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])' "$python_file"; then
+      report_error "invalid Python syntax: ${python_file#"$repo_root/"}"
+    fi
+  done < <(find "$repo_root" -type f -name '*.py')
+else
+  printf 'WARN: python3 is unavailable; Python syntax checks skipped.\n' >&2
+fi
+
 if [[ "$errors" -ne 0 ]]; then
   printf 'Validation failed with %d error(s).\n' "$errors" >&2
   exit 1
