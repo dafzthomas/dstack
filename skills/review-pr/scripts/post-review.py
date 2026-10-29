@@ -24,7 +24,7 @@ NOTE_START = '> [!NOTE]\n> 🤖'
 def gh(*args, stdin=None):
     result = subprocess.run(['gh', *args], input=stdin, capture_output=True, text=True)
     if result.returncode != 0:
-        sys.exit(f'gh {" ".join(args[:2])} failed: {result.stderr.strip()}')
+        sys.exit(f'gh {" ".join(args[:2])} failed: {result.stderr.strip()} {result.stdout.strip()}')
     return result.stdout
 
 
