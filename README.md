@@ -1,6 +1,6 @@
 # Agent skills
 
-Reusable Codex skills for pull request review and delivery.
+Reusable Codex skills for pull request review, delivery, team decisions and UI polish.
 
 ## Included skills
 
@@ -12,6 +12,7 @@ Reusable Codex skills for pull request review and delivery.
 | `what-in-the-pr` | Audit open PRs with subagents, refresh them against current main, and recommend next steps. |
 | `babysit-pr` | Watch your own PR to merge: fix comments and checks, reply to every comment addressed, and ask in the thread when a comment needs your decision. |
 | `tenth-man` | Act as a team's designated dissenter: make the strongest case against a consensus, then concede or hold when the team pushes back. |
+| `ui-hillclimb` | Polish a UI with a cross-provider council that scores screenshots of each commit against reference apps until every reviewer puts it at the target and level with or ahead of them. |
 
 Codex-managed system skills, plugin-provided skills, vendor skills, and generated
 symlinks are intentionally excluded. They should be installed from their
