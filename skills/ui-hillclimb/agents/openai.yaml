@@ -1,0 +1,6 @@
+interface:
+  display_name: "UI Hill Climb"
+  short_description: "Polish a UI until a cross-provider council scores it above target and ahead of reference apps"
+  default_prompt: "Use $ui-hillclimb to polish this app's UI. Agree the target, reference apps and round budget with me first, then run council rounds until every reviewer scores every category at the target and at or above each reference app."
+policy:
+  allow_implicit_invocation: false
