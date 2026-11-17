@@ -21,7 +21,9 @@ import sys
 HUNK = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@')
 NOTE_START = '> [!NOTE]\n> 🤖'
 HIDDEN = re.compile(r'```.*?```|<details>.*?</details>', re.DOTALL)
-MAX_WORDS = {'body': 100, 'comment': 60}
+BODY_ITEM = re.compile(r'\n\s*\n|\n(?=\s*(?:[-*]|\d+\.)\s)')
+MAX_ITEM_WORDS = 40
+MAX_COMMENT_WORDS = 60
 
 
 def gh(*args, stdin=None):
@@ -74,19 +76,22 @@ def misplaced(comment, index):
     return None
 
 
-def visible_words(text):
-    """Count words a reader sees before expanding anything: code blocks and <details> excluded."""
+def visible(text):
+    """The text a reader sees before expanding anything: code blocks and <details> removed."""
     if text.startswith(NOTE_START):
         text = text.split('\n\n', 1)[-1]
-    return len(HIDDEN.sub(' ', text).split())
+    return HIDDEN.sub(' ', text)
 
 
 def too_long(payload):
-    texts = [('body', 'body', payload.get('body', ''))]
-    texts += [('comment', f"{c['path']}:{c['line']}", c['body']) for c in payload.get('comments', [])]
-    return [f'{where} has {count} visible words; the limit is {MAX_WORDS[kind]}'
-            for kind, where, text in texts
-            if (count := visible_words(text)) > MAX_WORDS[kind]]
+    """Each body paragraph or bullet, and each whole inline comment, must fit a skim."""
+    problems = [f'body item "{" ".join(item.split()[:6])} ..." has {count} words; the limit is {MAX_ITEM_WORDS}'
+                for item in BODY_ITEM.split(visible(payload.get('body', '')))
+                if (count := len(item.split())) > MAX_ITEM_WORDS]
+    problems += [f"{c['path']}:{c['line']} has {count} visible words; the limit is {MAX_COMMENT_WORDS}"
+                 for c in payload.get('comments', [])
+                 if (count := len(visible(c['body']).split())) > MAX_COMMENT_WORDS]
+    return problems
 
 
 def attributed(text, note):

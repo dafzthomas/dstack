@@ -201,8 +201,8 @@ Sources: [git range-diff](https://git-scm.com/docs/git-range-diff).
 
 The script exits 3 when the head has moved from `$sha`; restart the pass. It exits 2 naming
 each comment outside the PR's diff hunks; move those to the body citing `path:line`.
-It exits 5 naming any body over 100 words or comment over 60, counted outside code
-blocks and `<details>`; shorten it to the shape in `review-pr` step 5. A
+It exits 5 naming any body paragraph or bullet over 40 words, or comment over 60,
+counted outside code blocks and `<details>`; shorten it to the shape in `review-pr` step 5. A
 deleted line takes `side: "LEFT"` and its old-file line number. `REQUEST_CHANGES` is not
 available to this skill.
 

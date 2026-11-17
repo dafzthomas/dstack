@@ -260,8 +260,8 @@ are names for a decision, not a checklist. A name with no decision behind it sta
 of the review.
 
 Readers skim. Each finding is one line someone can act on, and the evidence sits in a
-collapsed `<details>` block below it. `post-review.py` refuses a body over 100 words or a
-comment over 60 words, not counting code blocks and `<details>`. Use short 7-character SHAs.
+collapsed `<details>` block below it. `post-review.py` refuses a body paragraph or bullet over 40
+words and a comment over 60 words, not counting code blocks and `<details>`. Use short 7-character SHAs.
 
 Each inline comment is the claim, the fix when it is an edit, and the evidence:
 
