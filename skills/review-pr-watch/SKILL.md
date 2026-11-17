@@ -83,7 +83,7 @@ GitHub. A final response ends this watch unless a verified scheduler will resume
   tracked thread and its replies, and issue discussion. A reply or resolution can change
   without a new commit. Reuse completed code verification only while its evidence holds.
 - Report state changes and the next poll time in commentary. While idle, give a brief
-  heartbeat at least once a minute. Keep unchanged polls off GitHub.
+  one-line heartbeat at least once a minute. Keep unchanged polls off GitHub.
 - Continue after a status question or correction unless the user cancels or changes the
   scope. Preserve the ledger before waiting and before any context handoff.
 
@@ -205,6 +205,11 @@ reason this skill exists.
 The fourth row is the no-nag rule: an author who has not got to a finding yet does not need
 a second copy of it.
 
+If the author made the claim go away by changing the other side, check which side the
+source of truth supports. When your finding had it backwards, the verdict is `withdrawn`,
+and the reply says so plainly: "Withdrawn: `<path>` was right, and the fix in `<sha7>` is
+the correct one." Do not call it `fixed`.
+
 ### 3. Judge a rationale the way you judged the finding
 
 "Intentional, because X" is a claim, and it gets the admission test in reverse — you can
@@ -226,14 +231,13 @@ evidence about the code. They change how quickly you check; they never replace t
 Take the commits `git range-diff` marks new or changed since `$reviewed`, subtract the
 changes you just verified as fixes, and run `review-pr`'s hunt over what remains.
 
-The bar does not drop because the code is new. `review-pr`'s admission test still decides
-what gets posted: every finding completes the Bug or Architecture sentence with concrete
-values from code you read. That test is what excludes a test-coverage wish, a naming
-preference, and an accessibility hunch — while admitting "on keyboard-only navigation the
-dismiss control cannot be reached", which completes the sentence.
+The bar does not drop because the code is new. `review-pr`'s admission test and its
+"Not findings" list still decide what gets posted.
 
-A new file arriving inside an unrelated commit is a scope observation, not a finding. Leave
-it out of the review; mention it to the user if it matters.
+A new file arriving inside an unrelated commit is a scope observation, not a finding. So
+is a stale branch, a PR title or description that no longer fits, and an apply or deploy
+step. Leave them out of the review, and put any that matter under **Needs you** in the
+step 7 report.
 
 Advance `reviewed_sha` only when this step actually finished and any new findings are
 safely recorded. Advancing it after a partial hunt silently drops those commits from
@@ -259,8 +263,9 @@ If the evidence changed, restart the pass. Otherwise, in this order:
    `regressed`, so the PR does not stay approved over a defect. Pause for the user if the
    dismissal fails.
 5. **Post one `COMMENT` review** through `post-review.py`, carrying any new findings from
-   step 4, with the per-finding verdicts in its body. Skip the review entirely when step 4
-   found nothing.
+   step 4 in `review-pr`'s body shape. Add one verdict line per finding whose state moved
+   this pass, such as `- **fixed** · [<short name>](<thread url>) in <sha7>`. Skip the
+   review entirely when step 4 found nothing.
 
 A review carrying findings is always `event: "COMMENT"`. `REQUEST_CHANGES` is not
 authorized by this skill. Escalate to the user when necessary. Whether unresolved threads
@@ -291,13 +296,29 @@ other, and a finding left `open` or `regressed` dismisses the approval in step 5
 
 ### 7. Report progress and repeat
 
-Keep the progress update brief and cover:
+The user skims this report. When nothing changed, the whole report is one line:
 
-- what changed since the last pass, or `no change since <time>`;
-- one line per finding whose state moved, citing the verified SHA and the commit or
-  discussion reply that changed the verdict;
-- new findings posted this pass;
-- what the PR is waiting on, and anything needing the user, named with its owner.
+```md
+**<o>/<r>#<n>** at `<sha7>`: no change. <Waiting on <owner> for <finding short name> | Settled and approved>.
+```
+
+Otherwise use this shape, and leave out any section that would be empty:
+
+```md
+**<o>/<r>#<n>** at `<sha7>`: <waiting on author | settled and approved | needs you>
+
+**Needs you**
+- **<decision>**: <one line, with the link>
+
+**Changed**
+- **<finding short name>**: open → fixed in `<sha7>`
+- **New, Major** · `<path:line>`: <what breaks>
+```
+
+Each bullet is one line. Do not say that the watch is still on, that the ledger was saved,
+or that you posted nothing on an untouched finding. Do not narrate process, list thread
+ids, or repeat SHAs inside bullets. Scope notes, evidence gaps and the harmful process
+concerns that `review-pr` keeps off the PR go under **Needs you**.
 
 Save the ledger. If no stopping condition applies, keep watching. With a PR watch tool, start the watch if this was the first pass, then send this report as the final message and end the turn; the next wake returns to step 1. Without one, send it as commentary, name the next poll time, execute the wait, and return to step 1. An unchanged poll stays in this loop.
 
@@ -354,3 +375,6 @@ On finishing, unwatch the PR if a watch tool is in use, and settle the thread if
 - **Owning a thread by login alone.** The operator posts under the same account. Yours open with the attribution note.
 - **Replying before unresolving.** The reply lands in a closed thread and the unresolved count lies until the next pass.
 - **Posting a per-pass status comment.** Every subscriber gets the email. Verdicts go on threads and in the review body.
+- **A long report when nothing changed.** One line. The user already knows the watch is on.
+- **Calling a backwards finding `fixed`.** If the author fixed the other side because you had it wrong, it is `withdrawn`, and the reply says so.
+- **Re-judging other reviewers' threads every pass.** Judge them once. Look again only after a new reply or a code change.

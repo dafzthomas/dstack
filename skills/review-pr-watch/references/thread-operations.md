@@ -194,13 +194,15 @@ Sources: [git range-diff](https://git-scm.com/docs/git-range-diff).
 
 ```bash
 # "$run_dir/review.json":
-# {"body": "<per-finding verdicts + new findings>",
+# {"body": "<review-pr step 5 body shape, plus one verdict line per moved finding>",
 #  "comments": [{"path": "<path>", "line": <n>, "side": "RIGHT", "body": "<comment>"}]}
 "$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" "$run_dir/review.json"
 ```
 
 The script exits 3 when the head has moved from `$sha`; restart the pass. It exits 2 naming
-each comment outside the PR's diff hunks; move those to the body citing `path:line`. A
+each comment outside the PR's diff hunks; move those to the body citing `path:line`.
+It exits 5 naming any body over 100 words or comment over 60, counted outside code
+blocks and `<details>`; shorten it to the shape in `review-pr` step 5. A
 deleted line takes `side: "LEFT"` and its old-file line number. `REQUEST_CHANGES` is not
 available to this skill.
 
@@ -212,7 +214,7 @@ polling progress to the user as non-final messages.
 ## Approve a settled PR
 
 ```bash
-printf '%s' '{"body": "Re-verified every finding at <sha> and reviewed the changes since <reviewed>. Nothing outstanding.", "comments": []}' \
+printf '%s' '{"body": "Re-verified every finding at `<sha7>`. Nothing outstanding.", "comments": []}' \
   | "$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" --event APPROVE -
 ```
 
