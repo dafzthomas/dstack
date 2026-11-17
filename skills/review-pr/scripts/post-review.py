@@ -2,9 +2,10 @@
 """Post one pull request review after checking it against the live PR.
 
 Exits 3 when the head has moved from --sha, 2 when an inline comment sits outside the
-PR's diff hunks, and 4 when an APPROVE meets armed auto-merge. Adds the attribution note
-to the body and every inline comment. Does nothing when the same review is already
-posted. Prints the review id.
+PR's diff hunks, 4 when an APPROVE meets armed auto-merge, and 5 when the body or a
+comment is longer than a reader will skim. Adds the attribution note to the body and
+every inline comment. Does nothing when the same review is already posted. Prints the
+review id.
 
 Payload (a file path, or - for stdin):
   {"body": "...", "comments": [{"path": "...", "line": 12, "side": "RIGHT",
@@ -19,6 +20,8 @@ import sys
 
 HUNK = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@')
 NOTE_START = '> [!NOTE]\n> 🤖'
+HIDDEN = re.compile(r'```.*?```|<details>.*?</details>', re.DOTALL)
+MAX_WORDS = {'body': 100, 'comment': 60}
 
 
 def gh(*args, stdin=None):
@@ -71,6 +74,21 @@ def misplaced(comment, index):
     return None
 
 
+def visible_words(text):
+    """Count words a reader sees before expanding anything: code blocks and <details> excluded."""
+    if text.startswith(NOTE_START):
+        text = text.split('\n\n', 1)[-1]
+    return len(HIDDEN.sub(' ', text).split())
+
+
+def too_long(payload):
+    texts = [('body', 'body', payload.get('body', ''))]
+    texts += [('comment', f"{c['path']}:{c['line']}", c['body']) for c in payload.get('comments', [])]
+    return [f'{where} has {count} visible words; the limit is {MAX_WORDS[kind]}'
+            for kind, where, text in texts
+            if (count := visible_words(text)) > MAX_WORDS[kind]]
+
+
 def attributed(text, note):
     return text if text.startswith(NOTE_START) else note + text
 
@@ -91,6 +109,10 @@ def main():
     comments = payload.get('comments', [])
     if args.event == 'APPROVE' and comments:
         sys.exit('An APPROVE review carries no inline comments; post findings as COMMENT.')
+    long_texts = too_long(payload)
+    if long_texts:
+        print('\n'.join(long_texts + ['Cut to one line per finding and move evidence into <details>.']), file=sys.stderr)
+        sys.exit(5)
 
     pull = f'repos/{args.repo}/pulls/{args.pr}'
     pull_request = json.loads(gh('api', pull))

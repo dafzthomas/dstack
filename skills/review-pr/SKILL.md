@@ -66,6 +66,15 @@ No concrete values, no finding. Drop it and say nothing about it.
 Naming, formatting, comment density, import order, anything the linter or formatter owns,
 "consider extracting", test-coverage wishes, praise, and restatements of what the diff does.
 
+Also not findings, because they are not defects in the diff:
+
+- The PR title, description or labels, and how the release tooling will read them.
+- Branch freshness, drift from the base branch, and merge, apply or deploy procedure.
+- Breakage that needs a later change this PR does not make ("once X maps to tokens").
+
+When one of the first two would cause real harm, such as an apply that deletes secrets,
+tell the user in the chat report and let them decide whether to raise it. Never post it.
+
 ## Workflow
 
 ### 1. Fetch the change
@@ -113,10 +122,13 @@ the attribution note. If one already covers the current head, return it instead 
 posting again. Do not repost a finding one of your open threads already carries; link
 the thread in the summary. Following an earlier review through is `review-pr-watch`'s job.
 
-Treat unresolved Cursor Bugbot and security review findings as candidates and put each
-through step 4. A confirmed one becomes a finding that cites the original comment. A
-refuted one gets one summary line with the evidence. One you cannot settle is an
-evidence gap. A resolved thread is input, not a second finding.
+Treat unresolved findings from Copilot, Cursor Bugbot and security review as candidates
+and put each through step 4. A confirmed one becomes your own finding and links the
+original comment. A refuted one gets one line, with its evidence in the collapsed section
+of the body. One that needs a person's decision, or that you cannot settle, goes to the
+user in the chat report. A resolved thread is input, not a second finding. Judge each bot
+comment once. Judge it again only when its thread gets a new reply or the code it points
+at changes.
 
 Use `/interrogate` only for a high-risk PR. An ordinary review does not start it.
 
@@ -188,6 +200,9 @@ be posted:
 - Cross-package claims — read the actual built file in `node_modules`, don't assume the API.
 - "Must stay in sync" and magic-number claims — open both sides and check they really differ.
 - Behavioural claims — read the render or control flow; PR descriptions routinely mislabel it.
+- Claims that a copy is out of date — check the source of truth itself (live Figma, the
+  other service, the published package), not a snapshot or generated file. When you cannot
+  reach it, the claim is an evidence gap, not a finding.
 - CI — green is not proof. Read what each check ran. A check that could not run, was
   skipped, or is still pending is inconclusive, never clean.
 
@@ -223,7 +238,9 @@ Rank survivors by real chance times real cost:
   foreseeable change into several places.
 - **Minor** — real but cheap or rare. Post it only if the fix is obvious; never pad with it.
 
-**Unverified findings are never posted.** No hedged comments, no "this may be".
+**Unverified findings are never posted.** No hedged comments, no "this may be", no
+"probably", no "inferred, not checked", and no "if X has since changed". An evidence gap
+goes to the user in the chat report, never into the posted review.
 
 The same defect on a second PR stays a finding, and the review recommends encoding it
 as a lint, a type, a test, or a CI check, naming the earlier PR.
@@ -242,19 +259,26 @@ Root Causes, Test Behavior, Not Implementation, Prove It Works, and Boundary Dis
 are names for a decision, not a checklist. A name with no decision behind it stays out
 of the review.
 
-Each comment is the claim, the fix when it is an edit, and the command plus output
-that backs the claim:
+Readers skim. Each finding is one line someone can act on, and the evidence sits in a
+collapsed `<details>` block below it. `post-review.py` refuses a body over 100 words or a
+comment over 60 words, not counting code blocks and `<details>`. Use short 7-character SHAs.
+
+Each inline comment is the claim, the fix when it is an edit, and the evidence:
 
 ````
-<claim: what breaks and when — 240 characters max>
+<claim: what breaks and when, one or two sentences>
 ```<lang>
-<the fix — 6 lines max>
+<the fix, 6 lines max>
 ```
+<details><summary>Evidence</summary>
+
 `<command>` → `<the output lines that show the failure>`
+</details>
 ````
 
-Include the snippet whenever the fix is concrete; omit it when the fix is a decision rather
-than an edit. Plain, direct sentences. No preamble, no hedging, no "consider".
+Include the snippet whenever the fix is concrete. Leave it out when the fix is a decision
+rather than an edit. Write plain, direct sentences. No preamble, no hedging, no "consider".
+One fix, not a menu of options.
 
 Each finding goes to one of two places, decided by whether its line sits inside a hunk of
 `"$review_dir/pr.diff"`:
@@ -264,7 +288,7 @@ Each finding goes to one of two places, decided by whether its line sits inside 
   line number. A deleted line takes `side: "LEFT"` and its old-file line number. For a
   range, use `start_line` + `line` within one hunk.
 - **Anything else** — the caller three files away, an unchanged invariant outside every
-  hunk → a bullet in the summary body citing `path:line`.
+  hunk → a one-line bullet in the summary body citing `path:line`.
 
 Confirm every surviving line number. A `RIGHT` line is numbered at `$sha`, a `LEFT` line
 at the merge base. `cat -n` renumbers from 1 and will hand you offsets instead of file
@@ -280,7 +304,8 @@ Use `?ref=$merge_base` for a `LEFT` line.
 
 Post the summary and all comments as one review through `scripts/post-review.py`. It
 exits 3 when the head has moved from `$sha` (restart from step 1), exits 2 naming any
-comment outside the diff (move it to the body), adds the attribution note, and posts
+comment outside the diff (move it to the body), exits 5 naming any text over the word
+limit (shorten it), adds the attribution note, and posts
 nothing when the same review already exists. `--dry-run` prints the final payload.
 
 ```bash
@@ -291,10 +316,25 @@ scripts/post-review.py --repo <o>/<r> --pr <n> --sha "$sha" --model "<model name
   "$review_dir/review.json"
 ```
 
-The review `body` opens with the head SHA, then one line per finding, worst first, each
-prefixed with its severity and naming the file, followed by any off-diff findings and the
-command and output under each claim. Close with one line stating the safety fact from
-step 3 and whether it held.
+The review `body` has this shape and nothing else:
+
+````md
+Reviewed `<sha7>`. <N> findings.
+
+- **Blocker** · `<path:line>` — <what breaks, one sentence>. (inline)
+- **Minor** · `<path:line>` — <what breaks, one sentence>.
+- **Copilot, refuted** · [<thread>](<url>) — <why, one clause>.
+
+<details><summary>Evidence</summary>
+
+- `<command>` → `<output>`
+- Safe because <the step 3 fact>. Checked with `<command>` → `<output>`.
+</details>
+````
+
+Worst finding first. An off-diff finding is a bullet like any other, with its evidence in
+the collapsed block. No paragraphs, no headings, and no "Premise checked" or "not
+verifiable" sections.
 
 ### 6. Say when it is clean
 
@@ -305,7 +345,7 @@ When posting is authorized, post it as a `COMMENT` with no inline comments:
 
 ```bash
 # "$review_dir/review.json":
-# {"body": "Reviewed <sha>. Nothing to raise. Safe because <the step 3 fact>, checked at <path:line or script>. Evidence: <command> → <output>. Not a merge.",
+# {"body": "Reviewed `<sha7>`. No findings.\n\n<details><summary>Evidence</summary>\n\nSafe because <the step 3 fact>. Checked at <path:line or script>: `<command>` → `<output>`.\n</details>",
 #  "comments": []}
 scripts/post-review.py --repo <o>/<r> --pr <n> --sha "$sha" --model "<model name>" \
   "$review_dir/review.json"
@@ -320,6 +360,7 @@ run, when you skipped a verify skill the repo has, and when you never reached st
 
 Do not approve, merge, push, edit, or rebase. Do not run Babysit. A clean `COMMENT` is
 not merge or auto-merge authorization. Merges require the operator's explicit authorization.
+Act on that rule. Do not write "Not a merge" on the PR.
 
 ## Quick reference
 
@@ -330,7 +371,7 @@ not merge or auto-merge authorization. Merges require the operator's explicit au
 | Head SHA | `gh pr view <n> --repo <o>/<r> --json headRefOid -q .headRefOid` |
 | Verify line | `... \| base64 -d \| awk -v a=<a> -v b=<b> 'NR>=a && NR<=b {print NR": "$0}'` |
 | Post | `scripts/post-review.py --repo <o>/<r> --pr <n> --sha "$sha" --model "<model name>" "$review_dir/review.json"` |
-| Clean verdict | Same call with `"comments": []`; the body states the SHA, the safety fact, and the commands. Not a merge. |
+| Clean verdict | Same call with `"comments": []`; one line with the SHA, the safety fact and commands collapsed in `<details>` |
 
 ## Common mistakes
 
@@ -343,6 +384,9 @@ not merge or auto-merge authorization. Merges require the operator's explicit au
 - **Numbering with `cat -n`.** It restarts at 1, so you post an offset as a line number. Number by `NR`.
 - **Suggesting a fix the repo doesn't do.** Correct in isolation, wrong here. Check step 2's pattern list.
 - **Padding the review to look thorough.** Two real bugs beat two bugs plus eight nits.
+- **Writing paragraphs.** One line per finding, evidence collapsed. The script rejects anything longer.
+- **Posting process advice as a finding.** A stale branch, a PR title or a deploy step goes to the user, not the PR.
+- **Trusting a snapshot over its source.** Check live Figma or the other service before calling a page stale.
 - **Calling an unfinished review clean.** An empty finding list is not a verdict. An unverified candidate, a check that could not run, a skipped verify skill, or an unread file is inconclusive.
 - **Approving, merging, pushing, editing, rebasing, or running Babysit.** The only GitHub write is a `COMMENT` review. A clean one is not merge authorization.
 - **Treating green CI as the verdict.** Read what ran. A check that could not run is inconclusive.
