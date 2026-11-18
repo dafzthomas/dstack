@@ -66,6 +66,14 @@ No concrete values, no finding. Drop it and say nothing about it.
 Naming, formatting, comment density, import order, anything the linter or formatter owns,
 "consider extracting", test-coverage wishes, praise, and restatements of what the diff does.
 
+A name is a finding only when shipped code reads it and trusting the name gives the caller
+wrong behaviour: "a caller reading `<name>` expects `<X>` and gets `<Y>`." That is a bug
+by the test above. A spelling or casing choice is not a finding, and neither is a name in
+a test fixture or mock, or a key nothing reads.
+
+When a linter rule could own a convention this diff breaks, recommend the rule in one body
+line. Don't comment on each instance.
+
 Also not findings, because they are not defects in the diff:
 
 - The PR title, description or labels, and how the release tooling will read them.
@@ -180,6 +188,9 @@ usually the worst finding. Spend the time there, not on a long list of maybes. A
 diff you do not trust gets that check as a blast-radius pass: prove the fact by running
 code. An unproven fact stays unproven in the verdict.
 
+A diff that reads cleanly gets this check in full. "Nothing jumped out" is when the worst
+defects get through, so a clean read is where you push hardest, not where you stop.
+
 #### Comment-prune diffs
 
 When the change mostly deletes comments, keep this repository's list. Deleting one of
@@ -253,6 +264,10 @@ Use the publication steps below only when posting is authorized. Posting is one
 
 Every verdict, local or posted, states the reviewed head SHA in the first line. Each
 claim is backed by the command you ran and the output it produced. No command, no claim.
+
+A posted review goes out under the operator's name. Write each finding so the operator
+could explain it in their own words when the author asks why. Every line tells the author
+something the diff doesn't. A line that only describes their change gets cut.
 
 Name a pstack principle only beside the decision it changed. Attack the Premise, Fix
 Root Causes, Test Behavior, Not Implementation, Prove It Works, and Boundary Discipline
@@ -384,6 +399,8 @@ Act on that rule. Do not write "Not a merge" on the PR.
 - **Numbering with `cat -n`.** It restarts at 1, so you post an offset as a line number. Number by `NR`.
 - **Suggesting a fix the repo doesn't do.** Correct in isolation, wrong here. Check step 2's pattern list.
 - **Padding the review to look thorough.** Two real bugs beat two bugs plus eight nits.
+- **Easing off because it looks fine.** A clean read still needs the safety fact proved. That is where the critical problems hide.
+- **Commenting on a name.** `is` versus `has`, camelCase versus snake_case, and dead keys in a test mock are not findings. A name shipped code reads, that gives its caller wrong behaviour, is.
 - **Writing paragraphs.** One line per finding, evidence collapsed. The script rejects anything longer.
 - **Posting process advice as a finding.** A stale branch, a PR title or a deploy step goes to the user, not the PR.
 - **Trusting a snapshot over its source.** Check live Figma or the other service before calling a page stale.
