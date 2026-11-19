@@ -278,7 +278,18 @@ complete with no evidence gaps, means the review is settled. Re-read the head an
 discussion before approval; restart if they changed.
 
 Post `APPROVE` at the confirmed SHA through `post-review.py --event APPROVE` with no
-comments. It posts nothing when your approval already stands at that SHA. It exits 4 when
+comments. An approval says a person can understand what is merging, so its body gives a
+reader what they need to understand the change without re-reviewing it. Every line tells
+them something the diff doesn't:
+
+- **Safe because**: the one fact from `review-pr` step 3 that the change is safe because of, and the `path:line` where you checked it.
+- **Read first**: the `path:line` where the risk sits, and why.
+- **Settled**: each finding's short name and how it ended, `fixed` or `withdrawn`. Leave this out when there were none.
+- **Evidence**: the commands and outputs, collapsed in `<details>`.
+
+If you can't write the safe-because line, the review is not settled. Don't approve.
+
+`post-review.py` posts nothing when your approval already stands at that SHA. It exits 4 when
 auto-merge is armed, because the approval could merge the PR and merges need the operator.
 Then pause, and tell the user the review is settled and waiting on their call. Record
 `approved_at` after a successful approval.
@@ -360,6 +371,7 @@ On finishing, unwatch the PR if a watch tool is in use, and settle the thread if
 | "This really should be its own PR" | A scope observation for the user, not a finding for the review. |
 | "Nothing moved, but I should say something" | Report no change. An untouched open finding gets no second comment. |
 | "I read the head SHA at the start of the pass" | Steps 2–4 take minutes. Re-read, or post onto the wrong lines. |
+| "Everything's green and it looks right" | That is when a claim goes unchecked. Verify it the same way as when something looks wrong. |
 | "Their explanation sounds reasonable" | Sounding reasonable is not being right. Accept it from `path:line` or not at all. |
 | "They'll fix it in a follow-up" | Accept it only with a link to an issue that exists, and never for a Blocker. |
 | "It's approved, so the watch is done" | Approval is a state. New commits still get a pass, and a new finding dismisses it. |
@@ -372,6 +384,7 @@ On finishing, unwatch the PR if a watch tool is in use, and settle the thread if
 - **Diffing `$reviewed..$sha`.** After the author merges the base branch in, that range holds every base commit. After a force push it is fiction. Use `git range-diff`.
 - **Advancing `reviewed_sha` after a partial hunt.** Those commits are now invisible to every future pass.
 - **Approving with a `contested` finding open.** Undecided is not settled.
+- **A bare approval.** "Nothing outstanding" gives a reader nothing to understand. Name the safety fact, where to read first, and what was settled.
 - **Owning a thread by login alone.** The operator posts under the same account. Yours open with the attribution note.
 - **Replying before unresolving.** The reply lands in a closed thread and the unresolved count lies until the next pass.
 - **Posting a per-pass status comment.** Every subscriber gets the email. Verdicts go on threads and in the review body.

@@ -214,9 +214,14 @@ polling progress to the user as non-final messages.
 ## Approve a settled PR
 
 ```bash
-printf '%s' '{"body": "Re-verified every finding at `<sha7>`. Nothing outstanding.", "comments": []}' \
-  | "$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" --event APPROVE -
+# "$run_dir/approve.json":
+# {"body": "Approved `<sha7>`.\n\n- **Safe because** <the step 3 fact>, checked at `<path:line>`.\n- **Read first** `<path:line>`: <why the risk sits there>.\n- **Settled** <finding short name> fixed in `<sha7>`; <finding short name> withdrawn.\n\n<details><summary>Evidence</summary>\n\n`<command>` → `<output>`\n</details>",
+#  "comments": []}
+"$post_review" --repo "$repo" --pr "$pr" --sha "$sha" --model "<model name>" --event APPROVE \
+  "$run_dir/approve.json"
 ```
+
+The body follows step 6 of the skill: what a reader needs to understand the change, never a summary of the diff.
 
 Only with every ledger finding `fixed` or `withdrawn` and the review complete through the
 current head. The script exits 4 when auto-merge is armed; pause for the user. It posts
